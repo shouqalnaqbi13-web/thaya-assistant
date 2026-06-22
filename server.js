@@ -72,6 +72,16 @@ function isProductQuery(message) {
   return /abaya|dress|collection|black|white|beige|pink|blue|colou?r|buy|shop|show me|do you have|available|price of|how much/.test(m);
 }
 
+const FILLER_PHRASES = /^(do you have|i want to buy|show me|find|get me|looking for|want|buy|shop for|shop|i need|is there|are there)\b/gi;
+const CATALOG_WORDS = new Set(['abaya', 'abayas', 'dress', 'dresses', 'piece', 'pieces', 'collection', 'any']);
+
+function refineSearchTerm(message) {
+  const stripped = message.replace(FILLER_PHRASES, '').trim();
+  const words = (stripped || message).split(/\s+/).filter(w => w && !CATALOG_WORDS.has(w.toLowerCase()));
+  const refined = words.join(' ').trim();
+  return refined || stripped || message;
+}
+
 // ── Main chat endpoint ────────────────────────────────────────────────────────
 // Contract matches snippets/thaya-chat-widget.liquid exactly:
 // request:  { message: string, history: [{ type: 'user'|'bot', text: string }] }
@@ -86,7 +96,11 @@ app.post('/api/chat', async (req, res) => {
   try {
     let contextBlock = '';
     if (isProductQuery(message)) {
-      const products = await searchStorefrontProducts(message);
+      const refinedTerm = refineSearchTerm(message);
+      let products = await searchStorefrontProducts(refinedTerm);
+      if (!products.length && refinedTerm.toLowerCase() !== message.toLowerCase()) {
+        products = await searchStorefrontProducts(message);
+      }
       contextBlock = products.length
         ? `\n\nPRODUCT SEARCH RESULTS for "${message}":\n${products.map(p => `- ${p.title} — AED ${(parseFloat(p.price) || 0).toFixed(0)} — ${SHOP_DOMAIN}${p.url}`).join('\n')}`
         : `\n\nPRODUCT SEARCH RESULTS for "${message}": none found.`;
