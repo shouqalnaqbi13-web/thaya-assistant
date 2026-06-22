@@ -72,14 +72,18 @@ function isProductQuery(message) {
   return /abaya|dress|collection|black|white|beige|pink|blue|colou?r|buy|shop|show me|do you have|available|price of|how much/.test(m);
 }
 
-const FILLER_PHRASES = /^(do you have|i want to buy|show me|find|get me|looking for|want|buy|shop for|shop|i need|is there|are there)\b/gi;
-const CATALOG_WORDS = new Set(['abaya', 'abayas', 'dress', 'dresses', 'piece', 'pieces', 'collection', 'any']);
+const STOPWORDS = new Set([
+  'i', 'a', 'an', 'the', 'me', 'my', 'you', 'your', 'we', 'do', 'does', 'is', 'are', 'am',
+  'can', 'could', 'would', 'will', 'to', 'for', 'of', 'in', 'on', 'and', 'or', 'it', 'this',
+  'that', 'have', 'has', 'had', 'want', 'wanted', 'need', 'needed', 'looking', 'look', 'find',
+  'show', 'get', 'buy', 'shop', 'shopping', 'any', 'some', 'please',
+  'abaya', 'abayas', 'dress', 'dresses', 'piece', 'pieces', 'collection'
+]);
 
+// Returns null when the message has no distinguishing search term (pure browse intent).
 function refineSearchTerm(message) {
-  const stripped = message.replace(FILLER_PHRASES, '').trim();
-  const words = (stripped || message).split(/\s+/).filter(w => w && !CATALOG_WORDS.has(w.toLowerCase()));
-  const refined = words.join(' ').trim();
-  return refined || stripped || message;
+  const words = message.split(/\s+/).filter(w => w && !STOPWORDS.has(w.toLowerCase().replace(/[^a-z0-9]/g, '')));
+  return words.join(' ').trim() || null;
 }
 
 // ── Main chat endpoint ────────────────────────────────────────────────────────
@@ -97,13 +101,17 @@ app.post('/api/chat', async (req, res) => {
     let contextBlock = '';
     if (isProductQuery(message)) {
       const refinedTerm = refineSearchTerm(message);
-      let products = await searchStorefrontProducts(refinedTerm);
-      if (!products.length && refinedTerm.toLowerCase() !== message.toLowerCase()) {
-        products = await searchStorefrontProducts(message);
+      if (refinedTerm) {
+        let products = await searchStorefrontProducts(refinedTerm);
+        if (!products.length && refinedTerm.toLowerCase() !== message.toLowerCase()) {
+          products = await searchStorefrontProducts(message);
+        }
+        contextBlock = products.length
+          ? `\n\nPRODUCT SEARCH RESULTS for "${message}":\n${products.map(p => `- ${p.title} — AED ${(parseFloat(p.price) || 0).toFixed(0)} — ${SHOP_DOMAIN}${p.url}`).join('\n')}`
+          : `\n\nPRODUCT SEARCH RESULTS for "${message}": none found.`;
+      } else {
+        contextBlock = `\n\nNOTE: The customer is asking to browse generally, with no specific color/style/fabric mentioned. Do not claim no products exist — invite them to describe a color, style, or fabric, or link them to ${SHOP_DOMAIN}/collections/all to browse everything.`;
       }
-      contextBlock = products.length
-        ? `\n\nPRODUCT SEARCH RESULTS for "${message}":\n${products.map(p => `- ${p.title} — AED ${(parseFloat(p.price) || 0).toFixed(0)} — ${SHOP_DOMAIN}${p.url}`).join('\n')}`
-        : `\n\nPRODUCT SEARCH RESULTS for "${message}": none found.`;
     }
 
     const claudeMessages = [
