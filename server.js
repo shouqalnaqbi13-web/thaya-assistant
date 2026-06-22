@@ -54,9 +54,12 @@ ESCALATION: If the customer wants a refund/cancellation outside policy, reports 
 // ── Live Shopify storefront product search (public, no auth required) ──────────
 async function searchStorefrontProducts(query) {
   try {
-    const url = `${SHOP_DOMAIN}/search/suggest.json?q=${encodeURIComponent(query)}&resources[type]=product&resources[limit]=5&resources[fields]=title,price,url`;
+    const url = `${SHOP_DOMAIN}/search/suggest.json?q=${encodeURIComponent(query)}&resources[type]=product&resources[limit]=5`;
     const res = await fetch(url);
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.error('Storefront search failed:', res.status, await res.text());
+      return [];
+    }
     const data = await res.json();
     return data?.resources?.results?.products || [];
   } catch {
